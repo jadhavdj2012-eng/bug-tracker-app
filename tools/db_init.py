@@ -1,7 +1,11 @@
 import sqlite3
 import os
 
-DB_PATH = 'bugtracker.db'
+# For Vercel/Serverless: Use /tmp for SQLite as the main filesystem is read-only
+if os.environ.get('VERCEL') == '1':
+    DB_PATH = '/tmp/bugtracker.db'
+else:
+    DB_PATH = 'bugtracker.db'
 
 def get_db_connection():
     """Returns a connection to the SQLite database."""

@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 import tools.db_models as db
 import tools.export_service as export
+import tools.db_init as db_init
 
 # Load environment variables
 load_dotenv()
@@ -15,7 +16,15 @@ CORS(app)
 
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-key-fallback')
 app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'uploads')
+if os.environ.get('VERCEL') == '1':
+    app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
+    
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)) # 16MB max
+
+# --- AUTO-INIT DB ---
+if not os.path.exists(db.DB_PATH):
+    print(f"Database not found at {db.DB_PATH}. Initializing...")
+    db_init.init_db()
 
 # --- MOCK AUTH FOR MVP ---
 # In a real app, this would use JWT or sessions. 
