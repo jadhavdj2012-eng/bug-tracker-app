@@ -2,6 +2,7 @@ import os
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
+import base64
 
 import tools.db_models as db
 import tools.export_service as export
@@ -156,15 +157,19 @@ def upload_screenshot(bug_id):
         
     if file:
         filename = file.filename
-        # In real life, secure the filename with werkzeug.utils.secure_filename
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
-        # Save to DB
-        url = f"/uploads/{filename}"
-        db.add_screenshot(bug_id, filename, url)
-        
-        return jsonify({"message": "File uploaded", "url": url}), 201
+        try:
+            # Read file and convert to Base64 for persistent cloud storage in MVP
+            file_data = file.read()
+            encoded_string = base64.b64encode(file_data).decode('utf-8')
+            mime_type = file.mimetype or 'image/png'
+            data_url = f"data:{mime_type};base64,{encoded_string}"
+            
+            # Save the Base64 data URL to DB instead of a local path
+            db.add_screenshot(bug_id, filename, data_url)
+            
+            return jsonify({"message": "File uploaded", "url": data_url}), 201
+        except Exception as e:
+            return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
 @app.route('/api/modules', methods=['GET'])
 def list_modules():

@@ -184,7 +184,17 @@ def create_bug(bug_data: Dict[str, Any], reporter_id: int) -> Dict[str, Any]:
     new_bug_id = f"BUG-{1000 + count + 1}"
     
     columns = ['bug_id', 'title', 'description', 'steps_to_reproduce', 'expected_result', 'actual_result', 'severity', 'priority', 'reporter_id']
-    values = [new_bug_id, bug_data.get('title'), bug_data.get('description'), bug_data.get('steps_to_reproduce'), bug_data.get('expected_result'), bug_data.get('actual_result'), bug_data.get('severity', 'Minor'), bug_data.get('priority', 'P3'), reporter_id]
+    values = [
+        new_bug_id, 
+        bug_data.get('title'), 
+        bug_data.get('description'), 
+        bug_data.get('steps_to_reproduce') or '', 
+        bug_data.get('expected_result'), 
+        bug_data.get('actual_result'), 
+        bug_data.get('severity', 'Minor'), 
+        bug_data.get('priority', 'P3'), 
+        reporter_id
+    ]
     
     for opt in ['module', 'assignee_id']:
         if opt in bug_data:

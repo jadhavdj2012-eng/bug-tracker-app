@@ -14,12 +14,21 @@ const UI = {
     // Format Date string
     formatDate: (dateStr) => {
         if (!dateStr) return '';
-        // SQLite returns UTC format 'YYYY-MM-DD HH:MM:SS'. For correct local display, append 'Z'
-        let isoStr = dateStr;
-        if (dateStr.indexOf(' ') !== -1 && !dateStr.endsWith('Z')) {
-            isoStr = dateStr.replace(' ', 'T') + 'Z';
+
+        // Try parsing directly (works for ISO strings from Postgres)
+        let d = new Date(dateStr);
+
+        // If invalid, try fallback for SQLite format 'YYYY-MM-DD HH:MM:SS'
+        if (isNaN(d.getTime())) {
+            let isoStr = dateStr;
+            if (dateStr.indexOf(' ') !== -1 && !dateStr.endsWith('Z')) {
+                isoStr = dateStr.replace(' ', 'T') + 'Z';
+            }
+            d = new Date(isoStr);
         }
-        const d = new Date(isoStr);
+
+        if (isNaN(d.getTime())) return dateStr; // Fallback to raw string
+
         return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     },
 

@@ -41,8 +41,8 @@ const BugFormView = {
                         </div>
 
                         <div class="form-group">
-                            <label for="steps">Steps to Reproduce *</label>
-                            <textarea id="steps" required placeholder="1. Go to...\n2. Click on...\n3. See error...">${isEdit ? UI.escape(bug.steps_to_reproduce) : ''}</textarea>
+                            <label for="steps">Steps to Reproduce</label>
+                            <textarea id="steps" placeholder="1. Go to...\n2. Click on...\n3. See error...">${isEdit ? UI.escape(bug.steps_to_reproduce) : ''}</textarea>
                         </div>
 
                         <div class="form-row">
