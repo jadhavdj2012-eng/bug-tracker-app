@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# Database/Storage
+bugtracker.db
+bugtracker_backup_*.db
+uploads/*
+!uploads/.gitkeep
+
+# IDEs
+.vscode/
+.idea/
+
+# Temp/Logs
+.tmp/
+*.log
+check_db.py

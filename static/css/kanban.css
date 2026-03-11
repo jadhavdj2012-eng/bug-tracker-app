@@ -1,0 +1,144 @@
+.kanban-board {
+    display: flex;
+    gap: 1.5rem;
+    height: calc(100vh - 120px);
+    overflow-x: auto;
+    padding-bottom: 1rem;
+}
+
+.kanban-column {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    min-width: 300px;
+    max-width: 320px;
+    flex: 0 0 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.kanban-header {
+    padding: 1rem;
+    border-bottom: 2px solid;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Add colored top borders for visual grouping based on status */
+.col-todo {
+    border-top-color: var(--status-todo);
+}
+
+.col-progress {
+    border-top-color: var(--status-progress);
+}
+
+.col-fixed {
+    border-top-color: var(--status-fixed);
+}
+
+.col-retest {
+    border-top-color: var(--status-retest);
+}
+
+.col-closed {
+    border-top-color: var(--status-closed);
+}
+
+.col-rejected {
+    border-top-color: var(--status-rejected);
+}
+
+.kanban-count {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+}
+
+.kanban-cards {
+    padding: 1rem;
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Kanban Cards */
+.kanban-card {
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    padding: 1rem;
+    cursor: grab;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.kanban-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--text-muted);
+}
+
+.kanban-card:active {
+    cursor: grabbing;
+}
+
+.kanban-card.dragging {
+    opacity: 0.5;
+    background-color: var(--bg-surface-hover);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.card-id {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.card-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--border-color);
+}
+
+.assignee {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.assignee-avatar {
+    width: 24px;
+    height: 24px;
+    background-color: var(--text-muted);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.65rem;
+}

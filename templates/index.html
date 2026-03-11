@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Bug Tracker (MVP)</title>
+    <!-- Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Base Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/form.css">
+    <link rel="stylesheet" href="/static/css/kanban.css">
+</head>
+
+<body class="dark-theme">
+
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="logo">
+            <span class="logo-icon">🐛</span>
+            <h2>BugTracker <span class="badge">MVP</span></h2>
+        </div>
+
+        <ul class="nav-links">
+            <li><a href="#dashboard" class="active" id="nav-dashboard">📊 Dashboard</a></li>
+            <li><a href="#board" id="nav-board">📋 Status Board</a></li>
+            <li><a href="#create" id="nav-create" class="btn-primary-sm">+ New Bug</a></li>
+        </ul>
+
+        <div class="user-profile">
+            <div style="display:flex; align-items:center; gap:1rem; margin-bottom: 0.75rem; width: 100%;">
+                <div class="avatar" id="current-user-avatar">AD</div>
+                <div class="user-info">
+                    <span id="current-user-name">Admin User</span>
+                    <span class="role" id="current-user-role">Admin</span>
+                </div>
+            </div>
+            <!-- MVP User Switcher -->
+            <select id="user-switcher" class="user-switcher" title="Switch User (MVP)">
+                <!-- Populated via JS -->
+            </select>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="content-wrapper" id="app-container">
+        <!-- Views will be dynamically injected here by app.js -->
+        <div class="loading-state">Loading...</div>
+    </main>
+
+    <!-- Scripts -->
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/ui.js"></script>
+    <script src="/static/js/views/dashboard.js"></script>
+    <script src="/static/js/views/kanban.js"></script>
+    <script src="/static/js/views/bugForm.js"></script>
+    <script src="/static/js/views/bugDetail.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>
