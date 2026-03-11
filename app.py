@@ -22,9 +22,15 @@ if os.environ.get('VERCEL') == '1':
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)) # 16MB max
 
 # --- AUTO-INIT DB ---
-if not os.path.exists(db.DB_PATH):
-    print(f"Database not found at {db.DB_PATH}. Initializing...")
-    db_init.init_db()
+# For SQLite: Init if file is missing
+# For Postgres: Always attempt init on startup (it uses CREATE TABLE IF NOT EXISTS)
+# In production/deployment, this ensures the new cloud DB is ready.
+if os.environ.get('DATABASE_URL') or not os.path.exists(getattr(db, 'DB_PATH', '')):
+    print("Ensuring database schema is initialized...")
+    try:
+        db_init.init_db()
+    except Exception as e:
+        print(f"Warning: Database initialization failed: {e}")
 
 # Ensure upload folder exists for screenshot uploads
 if not os.path.exists(app.config['UPLOAD_FOLDER']):

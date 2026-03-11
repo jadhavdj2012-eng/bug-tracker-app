@@ -4,6 +4,11 @@ from psycopg2.extras import RealDictCursor
 from typing import Dict, List, Optional, Any
 import sqlite3
 
+if os.environ.get('VERCEL') == '1':
+    DB_PATH = '/tmp/bugtracker.db'
+else:
+    DB_PATH = 'bugtracker.db'
+
 # Connection helper to detect environment
 def get_db_connection():
     db_url = os.environ.get('DATABASE_URL')
@@ -11,14 +16,9 @@ def get_db_connection():
     if db_url:
         # Use PostgreSQL (Neon.tech)
         conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
-        # Compatibility helper to make postgres act like sqlite row_factory
         return conn
     else:
-        # Fallback to SQLite (Local Development)
-        if os.environ.get('VERCEL') == '1':
-            DB_PATH = '/tmp/bugtracker.db'
-        else:
-            DB_PATH = 'bugtracker.db'
+        # Fallback to SQLite
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         return conn
@@ -277,7 +277,7 @@ def add_screenshot(bug_internal_id: int, filename: str, url: str):
 
 def get_dashboard_summary() -> Dict[str, Any]:
     summary = {
-        "total_bugs": execute_query("SELECT COUNT(*) FROM bugs", fetch_one=True)['count'] if os.environ.get('DATABASE_URL') else execute_query("SELECT COUNT(*) FROM bugs", fetch_one=True)['COUNT(*)'],
+        "total_bugs": execute_query("SELECT COUNT(*) as total FROM bugs", fetch_one=True)['total'],
         "by_status": {"to_do": 0, "in_progress": 0, "fixed": 0, "retest": 0, "closed": 0, "rejected": 0},
         "by_severity": {"major": 0, "minor": 0, "trivial": 0},
         "by_priority": {"p1": 0, "p2": 0, "p3": 0, "p4": 0}
