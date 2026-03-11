@@ -204,6 +204,11 @@ def system_status():
         }
     }), 200
 
+@app.route('/api/dashboard', methods=['GET'])
+def get_dashboard():
+    summary = db.get_dashboard_summary()
+    return jsonify({"summary": summary}), 200
+
 @app.route('/api/export', methods=['GET'])
 def export_bugs():
     format_param = request.args.get('format', 'csv').lower()
