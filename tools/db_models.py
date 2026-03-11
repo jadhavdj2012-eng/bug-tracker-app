@@ -1,57 +1,105 @@
-import sqlite3
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from typing import Dict, List, Optional, Any
-import uuid
+import sqlite3
 
-# For Vercel/Serverless: Use /tmp for SQLite as the main filesystem is read-only
-if os.environ.get('VERCEL') == '1':
-    DB_PATH = '/tmp/bugtracker.db'
-else:
-    DB_PATH = 'bugtracker.db'
-
+# Connection helper to detect environment
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    db_url = os.environ.get('DATABASE_URL')
+    
+    if db_url:
+        # Use PostgreSQL (Neon.tech)
+        conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+        # Compatibility helper to make postgres act like sqlite row_factory
+        return conn
+    else:
+        # Fallback to SQLite (Local Development)
+        if os.environ.get('VERCEL') == '1':
+            DB_PATH = '/tmp/bugtracker.db'
+        else:
+            DB_PATH = 'bugtracker.db'
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def execute_query(query: str, params: tuple = (), fetch_one=False, fetch_all=False, commit=False):
+    conn = get_db_connection()
+    is_postgres = hasattr(conn, 'cursor_factory')
+    
+    try:
+        if is_postgres:
+            cur = conn.cursor()
+            # Replace ? with %s for Postgres compatibility
+            postgres_query = query.replace('?', '%s')
+            cur.execute(postgres_query, params)
+            
+            result = None
+            if fetch_one:
+                row = cur.fetchone()
+                result = dict(row) if row else None
+            elif fetch_all:
+                rows = cur.fetchall()
+                result = [dict(r) for r in rows]
+            
+            if commit:
+                conn.commit()
+            return result
+        else:
+            cur = conn.cursor()
+            cur.execute(query, params)
+            
+            result = None
+            if fetch_one:
+                row = cur.fetchone()
+                result = dict(row) if row else None
+            elif fetch_all:
+                rows = cur.fetchall()
+                result = [dict(r) for r in rows]
+                
+            if commit:
+                conn.commit()
+            return result
+    finally:
+        conn.close()
 
 # --- USER MODELS ---
 
 def get_all_users() -> List[Dict[str, Any]]:
-    conn = get_db_connection()
-    users = conn.execute("SELECT * FROM users").fetchall()
-    conn.close()
-    return [dict(u) for u in users]
+    return execute_query("SELECT * FROM users", fetch_all=True)
 
 def get_user_by_id(user_db_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_db_connection()
-    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_db_id,)).fetchone()
-    conn.close()
-    return dict(user) if user else None
+    return execute_query("SELECT * FROM users WHERE id = ?", (user_db_id,), fetch_one=True)
 
 def create_user(name: str, email: str, role: str) -> Dict[str, Any]:
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Generate ID based on current count
-    cursor.execute("SELECT COUNT(*) FROM users")
-    count = cursor.fetchone()[0]
+    # Custom logic for ID generation
+    users = get_all_users()
+    count = len(users)
     new_user_id = f"USR-{1000 + count + 1}"
     
-    cursor.execute(
-        "INSERT INTO users (user_id, name, email, role) VALUES (?, ?, ?, ?)",
-        (new_user_id, name, email, role)
-    )
-    new_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return get_user_by_id(new_id)
-
+    conn = get_db_connection()
+    cur = conn.cursor()
+    is_postgres = hasattr(conn, 'cursor_factory')
+    
+    try:
+        q = "INSERT INTO users (user_id, name, email, role) VALUES (%s, %s, %s, %s) RETURNING id" if is_postgres else "INSERT INTO users (user_id, name, email, role) VALUES (?, ?, ?, ?)"
+        params = (new_user_id, name, email, role)
+        
+        if is_postgres:
+            cur.execute(q, params)
+            new_id = cur.fetchone()['id']
+        else:
+            cur.execute(q, params)
+            new_id = cur.lastrowid
+            
+        conn.commit()
+        return get_user_by_id(new_id)
+    finally:
+        conn.close()
 
 # --- BUG MODELS ---
 
 def get_all_bugs(filters: Dict[str, Any] = None, current_user: Dict[str, Any] = None) -> List[Dict[str, Any]]:
-    conn = get_db_connection()
-    
     query = """
         SELECT b.*, u_reporter.name as reporter_name, u_assignee.name as assignee_name, u_assignee.role as assignee_role
         FROM bugs b
@@ -61,7 +109,6 @@ def get_all_bugs(filters: Dict[str, Any] = None, current_user: Dict[str, Any] = 
     """
     params = []
     
-    # Enforce role-based visibility if user is provided
     if current_user:
         role = current_user.get('role', '')
         if role == 'Frontend Developer':
@@ -70,21 +117,12 @@ def get_all_bugs(filters: Dict[str, Any] = None, current_user: Dict[str, Any] = 
         elif role == 'Backend Developer':
             query += " AND (u_assignee.role = 'Backend Developer' OR b.assignee_id = ?)"
             params.append(current_user['id'])
-        # QA and Lead roles have no additional WHERE clause, they see everything.
-        
+            
     if filters:
-        if filters.get('status'):
-            query += " AND b.status = ?"
-            params.append(filters['status'])
-        if filters.get('severity'):
-            query += " AND b.severity = ?"
-            params.append(filters['severity'])
-        if filters.get('assignee_id'):
-            query += " AND b.assignee_id = ?"
-            params.append(filters['assignee_id'])
-        if filters.get('module'):
-            query += " AND b.module = ?"
-            params.append(filters['module'])
+        for field in ['status', 'severity', 'assignee_id', 'module']:
+            if filters.get(field):
+                query += f" AND b.{field} = ?"
+                params.append(filters[field])
         if filters.get('date_from'):
             query += " AND date(b.created_at) >= date(?)"
             params.append(filters['date_from'])
@@ -93,16 +131,9 @@ def get_all_bugs(filters: Dict[str, Any] = None, current_user: Dict[str, Any] = 
             params.append(filters['date_to'])
             
     query += " ORDER BY b.created_at DESC"
-    
-    bugs = conn.execute(query, params).fetchall()
-    conn.close()
-    return [dict(bug) for bug in bugs]
-
+    return execute_query(query, tuple(params), fetch_all=True)
 
 def get_bug_by_id(bug_internal_id: int, current_user: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
-    conn = get_db_connection()
-    
-    # Get Bug Details
     bug_query = """
         SELECT b.*, u_reporter.name as reporter_name, u_assignee.name as assignee_name, u_assignee.role as assignee_role
         FROM bugs b
@@ -110,10 +141,8 @@ def get_bug_by_id(bug_internal_id: int, current_user: Dict[str, Any] = None) -> 
         LEFT JOIN users u_assignee ON b.assignee_id = u_assignee.id
         WHERE b.id = ?
     """
-    
     params = [bug_internal_id]
     
-    # Enforce role-based visibility if user is provided
     if current_user:
         role = current_user.get('role', '')
         if role == 'Frontend Developer':
@@ -123,19 +152,11 @@ def get_bug_by_id(bug_internal_id: int, current_user: Dict[str, Any] = None) -> 
             bug_query += " AND (u_assignee.role = 'Backend Developer' OR b.assignee_id = ?)"
             params.append(current_user['id'])
             
-    bug = conn.execute(bug_query, tuple(params)).fetchone()
+    bug = execute_query(bug_query, tuple(params), fetch_one=True)
+    if not bug: return None
     
-    if not bug:
-        conn.close()
-        return None
-        
-    bug_dict = dict(bug)
+    bug['screenshots'] = execute_query("SELECT * FROM bug_screenshots WHERE bug_id = ?", (bug_internal_id,), fetch_all=True)
     
-    # Get Screenshots
-    screenshots = conn.execute("SELECT * FROM bug_screenshots WHERE bug_id = ?", (bug_internal_id,)).fetchall()
-    bug_dict['screenshots'] = [dict(s) for s in screenshots]
-    
-    # Get Comments
     comments_query = """
         SELECT c.*, u.name as author_name
         FROM bug_comments c
@@ -143,10 +164,8 @@ def get_bug_by_id(bug_internal_id: int, current_user: Dict[str, Any] = None) -> 
         WHERE c.bug_id = ?
         ORDER BY c.timestamp ASC
     """
-    comments = conn.execute(comments_query, (bug_internal_id,)).fetchall()
-    bug_dict['comments'] = [dict(c) for c in comments]
+    bug['comments'] = execute_query(comments_query, (bug_internal_id,), fetch_all=True)
     
-    # Get Audit Log
     audit_query = """
         SELECT a.*, u.name as changed_by_name
         FROM audit_log a
@@ -154,173 +173,133 @@ def get_bug_by_id(bug_internal_id: int, current_user: Dict[str, Any] = None) -> 
         WHERE a.bug_id = ?
         ORDER BY a.changed_at DESC
     """
-    audit = conn.execute(audit_query, (bug_internal_id,)).fetchall()
-    bug_dict['audit_history'] = [dict(a) for a in audit]
+    bug['audit_history'] = execute_query(audit_query, (bug_internal_id,), fetch_all=True)
     
-    conn.close()
-    return bug_dict
-
+    return bug
 
 def create_bug(bug_data: Dict[str, Any], reporter_id: int) -> Dict[str, Any]:
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM bugs")
-    count = cursor.fetchone()[0]
+    # Bug ID generation logic (simplistic)
+    all_bugs = execute_query("SELECT id FROM bugs", fetch_all=True)
+    count = len(all_bugs)
     new_bug_id = f"BUG-{1000 + count + 1}"
     
-    columns = [
-        'bug_id', 'title', 'description', 'steps_to_reproduce', 
-        'expected_result', 'actual_result', 'severity', 'priority', 
-        'reporter_id'
-    ]
+    columns = ['bug_id', 'title', 'description', 'steps_to_reproduce', 'expected_result', 'actual_result', 'severity', 'priority', 'reporter_id']
+    values = [new_bug_id, bug_data.get('title'), bug_data.get('description'), bug_data.get('steps_to_reproduce'), bug_data.get('expected_result'), bug_data.get('actual_result'), bug_data.get('severity', 'Minor'), bug_data.get('priority', 'P3'), reporter_id]
     
-    # Map required fields
-    values = [
-        new_bug_id,
-        bug_data.get('title'),
-        bug_data.get('description'),
-        bug_data.get('steps_to_reproduce'),
-        bug_data.get('expected_result'),
-        bug_data.get('actual_result'),
-        bug_data.get('severity', 'Minor'),
-        bug_data.get('priority', 'P3'),
-        reporter_id
-    ]
-    
-    # Map optional fields
-    for opt_field in ['module', 'assignee_id']:
-        if opt_field in bug_data:
-            columns.append(opt_field)
-            values.append(bug_data[opt_field])
+    for opt in ['module', 'assignee_id']:
+        if opt in bug_data:
+            columns.append(opt)
+            values.append(bug_data[opt])
             
-    placeholders = ", ".join(["?"] * len(columns))
-    col_str = ", ".join(columns)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    is_postgres = hasattr(conn, 'cursor_factory')
     
-    cursor.execute(f"INSERT INTO bugs ({col_str}) VALUES ({placeholders})", values)
-    new_id = cursor.lastrowid
-    
-    # Initial Audit Log
-    cursor.execute(
-        "INSERT INTO audit_log (bug_id, field_changed, new_value, changed_by_id) VALUES (?, ?, ?, ?)",
-        (new_id, "status", "To Do", reporter_id)
-    )
-    
-    conn.commit()
-    conn.close()
-    
-    return get_bug_by_id(new_id)
-
+    try:
+        placeholder = "%s" if is_postgres else "?"
+        q = f"INSERT INTO bugs ({', '.join(columns)}) VALUES ({', '.join([placeholder]*len(values))})"
+        if is_postgres: q += " RETURNING id"
+        
+        if is_postgres:
+            cur.execute(q, values)
+            new_id = cur.fetchone()['id']
+        else:
+            cur.execute(q, values)
+            new_id = cur.lastrowid
+            
+        # Audit log
+        aq = "INSERT INTO audit_log (bug_id, field_changed, new_value, changed_by_id) VALUES (%s, %s, %s, %s)" if is_postgres else "INSERT INTO audit_log (bug_id, field_changed, new_value, changed_by_id) VALUES (?, ?, ?, ?)"
+        cur.execute(aq, (new_id, "status", "To Do", reporter_id))
+        
+        conn.commit()
+        return get_bug_by_id(new_id)
+    finally:
+        conn.close()
 
 def update_bug(bug_internal_id: int, updates: Dict[str, Any], changer_id: int) -> Optional[Dict[str, Any]]:
-    # 1. Fetch current bug state for audit diffs
     current_bug = get_bug_by_id(bug_internal_id)
     if not current_bug: return None
     
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
+    is_postgres = hasattr(conn, 'cursor_factory')
     
-    update_cols = []
-    update_vals = []
-    
-    for key, new_val in updates.items():
-        if key in current_bug and current_bug[key] != new_val:
-            update_cols.append(f"{key} = ?")
-            update_vals.append(new_val)
-            
-            # Log to audit trail
-            old_val_str = str(current_bug[key]) if current_bug[key] is not None else ""
-            new_val_str = str(new_val) if new_val is not None else ""
-            cursor.execute(
-                "INSERT INTO audit_log (bug_id, field_changed, old_value, new_value, changed_by_id) VALUES (?, ?, ?, ?, ?)",
-                (bug_internal_id, key, old_val_str, new_val_str, changer_id)
-            )
-            
-    if update_cols:
-        update_cols.append("updated_at = CURRENT_TIMESTAMP")
-        query = f"UPDATE bugs SET {', '.join(update_cols)} WHERE id = ?"
-        update_vals.append(bug_internal_id)
-        cursor.execute(query, update_vals)
-        conn.commit()
+    try:
+        update_cols = []
+        update_vals = []
         
-    conn.close()
-    return get_bug_by_id(bug_internal_id)
+        for key, new_val in updates.items():
+            if key in current_bug and current_bug[key] != new_val:
+                placeholder = "%s" if is_postgres else "?"
+                update_cols.append(f"{key} = {placeholder}")
+                update_vals.append(new_val)
+                
+                old_val_str = str(current_bug[key]) if current_bug[key] is not None else ""
+                new_val_str = str(new_val) if new_val is not None else ""
+                
+                aq = "INSERT INTO audit_log (bug_id, field_changed, old_value, new_value, changed_by_id) VALUES (%s, %s, %s, %s, %s)" if is_postgres else "INSERT INTO audit_log (bug_id, field_changed, old_value, new_value, changed_by_id) VALUES (?, ?, ?, ?, ?)"
+                cur.execute(aq, (bug_internal_id, key, old_val_str, new_val_str, changer_id))
+                
+        if update_cols:
+            update_vals.append(bug_internal_id)
+            placeholder = "%s" if is_postgres else "?"
+            q = f"UPDATE bugs SET {', '.join(update_cols)}, updated_at = CURRENT_TIMESTAMP WHERE id = {placeholder}"
+            cur.execute(q, update_vals)
+            conn.commit()
+        
+        return get_bug_by_id(bug_internal_id)
+    finally:
+        conn.close()
 
 def delete_bug(bug_internal_id: int) -> bool:
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
+    is_postgres = hasattr(conn, 'cursor_factory')
+    placeholder = "%s" if is_postgres else "?"
     
-    # Check if exists
-    cursor.execute("SELECT id FROM bugs WHERE id = ?", (bug_internal_id,))
-    if not cursor.fetchone():
+    try:
+        cur.execute(f"DELETE FROM bug_comments WHERE bug_id = {placeholder}", (bug_internal_id,))
+        cur.execute(f"DELETE FROM bug_screenshots WHERE bug_id = {placeholder}", (bug_internal_id,))
+        cur.execute(f"DELETE FROM audit_log WHERE bug_id = {placeholder}", (bug_internal_id,))
+        cur.execute(f"DELETE FROM bugs WHERE id = {placeholder}", (bug_internal_id,))
+        conn.commit()
+        return True
+    finally:
         conn.close()
-        return False
-        
-    # Delete related records
-    cursor.execute("DELETE FROM bug_comments WHERE bug_id = ?", (bug_internal_id,))
-    cursor.execute("DELETE FROM bug_screenshots WHERE bug_id = ?", (bug_internal_id,))
-    cursor.execute("DELETE FROM audit_log WHERE bug_id = ?", (bug_internal_id,))
-    # Delete bug
-    cursor.execute("DELETE FROM bugs WHERE id = ?", (bug_internal_id,))
-    
-    conn.commit()
-    conn.close()
-    return True
 
 def add_comment(bug_internal_id: int, author_id: int, text: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO bug_comments (bug_id, author_id, text) VALUES (?, ?, ?)",
-        (bug_internal_id, author_id, text)
-    )
-    conn.commit()
-    conn.close()
-
+    q = "INSERT INTO bug_comments (bug_id, author_id, text) VALUES (%s, %s, %s)" if os.environ.get('DATABASE_URL') else "INSERT INTO bug_comments (bug_id, author_id, text) VALUES (?, ?, ?)"
+    execute_query(q, (bug_internal_id, author_id, text), commit=True)
 
 def add_screenshot(bug_internal_id: int, filename: str, url: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO bug_screenshots (bug_id, filename, url) VALUES (?, ?, ?)",
-        (bug_internal_id, filename, url)
-    )
-    conn.commit()
-    conn.close()
-
+    q = "INSERT INTO bug_screenshots (bug_id, filename, url) VALUES (%s, %s, %s)" if os.environ.get('DATABASE_URL') else "INSERT INTO bug_screenshots (bug_id, filename, url) VALUES (?, ?, ?)"
+    execute_query(q, (bug_internal_id, filename, url), commit=True)
 
 def get_dashboard_summary() -> Dict[str, Any]:
-    conn = get_db_connection()
-    
     summary = {
-        "total_bugs": 0,
+        "total_bugs": execute_query("SELECT COUNT(*) FROM bugs", fetch_one=True)['count'] if os.environ.get('DATABASE_URL') else execute_query("SELECT COUNT(*) FROM bugs", fetch_one=True)['COUNT(*)'],
         "by_status": {"to_do": 0, "in_progress": 0, "fixed": 0, "retest": 0, "closed": 0, "rejected": 0},
         "by_severity": {"major": 0, "minor": 0, "trivial": 0},
         "by_priority": {"p1": 0, "p2": 0, "p3": 0, "p4": 0}
     }
     
-    summary["total_bugs"] = conn.execute("SELECT COUNT(*) FROM bugs").fetchone()[0]
-    
-    # Status
-    for row in conn.execute("SELECT status, COUNT(*) FROM bugs GROUP BY status"):
-        k = row[0].lower().replace(" ", "_").replace("to_do", "to_do")
-        if k in summary["by_status"]: summary["by_status"][k] = row[1]
+    status_rows = execute_query("SELECT status, COUNT(*) as count FROM bugs GROUP BY status", fetch_all=True)
+    for row in status_rows:
+        k = row['status'].lower().replace(" ", "_")
+        if k in summary["by_status"]: summary["by_status"][k] = row['count']
         
-    # Severity
-    for row in conn.execute("SELECT severity, COUNT(*) FROM bugs GROUP BY severity"):
-        k = row[0].lower()
-        if k in summary["by_severity"]: summary["by_severity"][k] = row[1]
+    severity_rows = execute_query("SELECT severity, COUNT(*) as count FROM bugs GROUP BY severity", fetch_all=True)
+    for row in severity_rows:
+        k = row['severity'].lower()
+        if k in summary["by_severity"]: summary["by_severity"][k] = row['count']
         
-    # Priority
-    for row in conn.execute("SELECT priority, COUNT(*) FROM bugs GROUP BY priority"):
-        k = row[0].lower()
-        if k in summary["by_priority"]: summary["by_priority"][k] = row[1]
+    priority_rows = execute_query("SELECT priority, COUNT(*) as count FROM bugs GROUP BY priority", fetch_all=True)
+    for row in priority_rows:
+        k = row['priority'].lower()
+        if k in summary["by_priority"]: summary["by_priority"][k] = row['count']
         
-    conn.close()
     return summary
 
 def get_unique_modules() -> List[str]:
-    conn = get_db_connection()
-    modules = conn.execute("SELECT DISTINCT module FROM bugs WHERE module IS NOT NULL AND module != ''").fetchall()
-    conn.close()
-    return [m[0] for m in modules]
+    rows = execute_query("SELECT DISTINCT module FROM bugs WHERE module IS NOT NULL AND module != ''", fetch_all=True)
+    return [r['module'] for r in rows]
