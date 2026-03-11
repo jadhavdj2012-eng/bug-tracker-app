@@ -173,10 +173,36 @@ def list_modules():
 
 # --- DASHBOARD & ANALYTICS ---
 
-@app.route('/api/dashboard', methods=['GET'])
-def get_dashboard():
-    summary = db.get_dashboard_summary()
-    return jsonify({"summary": summary}), 200
+@app.route('/api/system-status', methods=['GET'])
+def system_status():
+    db_url = os.environ.get('DATABASE_URL', 'NOT_SET')
+    is_vercel = os.environ.get('VERCEL', '0')
+    
+    # Check DB Connection
+    db_type = "PostgreSQL" if os.environ.get('DATABASE_URL') else "SQLite"
+    conn_status = "Unknown"
+    error = None
+    
+    try:
+        conn = db.get_db_connection()
+        conn.close()
+        conn_status = "Connected"
+    except Exception as e:
+        conn_status = "Failed"
+        error = str(e)
+    
+    return jsonify({
+        "env": {
+            "VERCEL": is_vercel,
+            "DATABASE_URL_PRESENT": db_url != 'NOT_SET',
+            "DATABASE_URL_START": db_url[:20] + "..." if db_url != 'NOT_SET' else "N/A"
+        },
+        "database": {
+            "type": db_type,
+            "status": conn_status,
+            "error": error
+        }
+    }), 200
 
 @app.route('/api/export', methods=['GET'])
 def export_bugs():
