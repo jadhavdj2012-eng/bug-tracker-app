@@ -26,6 +26,10 @@ if not os.path.exists(db.DB_PATH):
     print(f"Database not found at {db.DB_PATH}. Initializing...")
     db_init.init_db()
 
+# Ensure upload folder exists for screenshot uploads
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 # --- MOCK AUTH FOR MVP ---
 # In a real app, this would use JWT or sessions. 
 # For this MVP, we pass the user_id in headers or default to Admin if missing.

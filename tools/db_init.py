@@ -117,7 +117,11 @@ def init_db():
     conn.close()
     
     # Ensure the upload directory exists
-    UPLOAD_FOLDER = 'uploads'
+    if os.environ.get('VERCEL') == '1':
+        UPLOAD_FOLDER = '/tmp/uploads'
+    else:
+        UPLOAD_FOLDER = 'uploads'
+        
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
         print(f"Created uploads folder at {os.path.abspath(UPLOAD_FOLDER)}")
