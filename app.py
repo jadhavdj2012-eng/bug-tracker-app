@@ -211,7 +211,13 @@ def system_status():
 
 @app.route('/api/dashboard', methods=['GET'])
 def get_dashboard():
-    summary = db.get_dashboard_summary()
+    module = request.args.get('module')
+    filters = {}
+    if module:
+        filters['module'] = module
+    
+    current_user = get_current_user()
+    summary = db.get_dashboard_summary(filters=filters, current_user=current_user)
     return jsonify({"summary": summary}), 200
 
 @app.route('/api/export', methods=['GET'])

@@ -82,7 +82,7 @@ const App = {
     renderUserSwitcher: () => {
         const switcher = document.getElementById('user-switcher');
         switcher.innerHTML = AppState.users.map(u =>
-            `<option value="${u.id}" ${AppState.currentUser && AppState.currentUser.id === u.id ? 'selected' : ''}>${u.name} (${u.role})</option>`
+            `<option value="${u.id}" ${AppState.currentUser && AppState.currentUser.id === u.id ? 'selected' : ''}>${u.name}</option>`
         ).join('');
 
         switcher.addEventListener('change', (e) => {

@@ -41,7 +41,7 @@ const KanbanView = {
                                 ${modules.map(m => `<option value="${UI.escape(m)}">${UI.escape(m)}</option>`).join('')}
                             </select>
                         </div>
-                        <button id="kb-apply-filters-btn" class="btn btn-primary" style="box-sizing: border-box; height: 38px; padding: 0 1rem; display: flex; align-items: center; justify-content: center;">Filter</button>
+                        <button id="kb-apply-filters-btn" class="btn btn-primary" disabled style="box-sizing: border-box; height: 38px; padding: 0 1rem; display: flex; align-items: center; justify-content: center; opacity: 0.5; cursor: not-allowed;">Filter</button>
                     </div>
                 </div>
                 
@@ -63,8 +63,33 @@ const KanbanView = {
             // Setup Drag & Drop
             KanbanView.setupDragAndDrop();
 
-            // Attach filter event
-            document.getElementById('kb-apply-filters-btn').addEventListener('click', KanbanView.fetchBugs);
+            // Enable filter button only when user changes something
+            const filterBtn = document.getElementById('kb-apply-filters-btn');
+            const enableFilterBtn = () => {
+                filterBtn.disabled = false;
+                filterBtn.style.opacity = '1';
+                filterBtn.style.cursor = 'pointer';
+            };
+
+            document.getElementById('kb-filter-date-from').addEventListener('change', enableFilterBtn);
+            document.getElementById('kb-filter-date-to').addEventListener('change', enableFilterBtn);
+            document.getElementById('kb-filter-module').addEventListener('change', () => {
+                enableFilterBtn();
+                // Also immediately fetch bugs when module changes
+                KanbanView.fetchBugs().then(() => {
+                    filterBtn.disabled = true;
+                    filterBtn.style.opacity = '0.5';
+                    filterBtn.style.cursor = 'not-allowed';
+                });
+            });
+
+            // Attach filter button click
+            filterBtn.addEventListener('click', async () => {
+                await KanbanView.fetchBugs();
+                filterBtn.disabled = true;
+                filterBtn.style.opacity = '0.5';
+                filterBtn.style.cursor = 'not-allowed';
+            });
 
             // Fetch initial bugs
             await KanbanView.fetchBugs();

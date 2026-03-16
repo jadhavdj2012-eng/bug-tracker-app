@@ -134,6 +134,7 @@ const BugFormView = {
                 btn.textContent = 'Saving...';
                 errBox.style.display = 'none';
 
+                const moduleInput = document.getElementById('module').value.trim();
                 const payload = {
                     title: document.getElementById('title').value,
                     description: document.getElementById('description').value,
@@ -142,7 +143,7 @@ const BugFormView = {
                     actual_result: document.getElementById('actual').value,
                     severity: document.getElementById('severity').value,
                     priority: document.getElementById('priority').value,
-                    module: document.getElementById('module').value
+                    module: moduleInput ? moduleInput : 'Other'
                 };
 
                 const assignee = document.getElementById('assignee_id').value;

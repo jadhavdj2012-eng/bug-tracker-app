@@ -111,11 +111,8 @@ def get_all_bugs(filters: Dict[str, Any] = None, current_user: Dict[str, Any] = 
     
     if current_user:
         role = current_user.get('role', '')
-        if role == 'Frontend Developer':
-            query += " AND (u_assignee.role = 'Frontend Developer' OR b.assignee_id = ?)"
-            params.append(current_user['id'])
-        elif role == 'Backend Developer':
-            query += " AND (u_assignee.role = 'Backend Developer' OR b.assignee_id = ?)"
+        if role in ['Frontend Developer', 'Backend Developer']:
+            query += " AND b.assignee_id = ?"
             params.append(current_user['id'])
             
     if filters:
@@ -145,11 +142,8 @@ def get_bug_by_id(bug_internal_id: int, current_user: Dict[str, Any] = None) -> 
     
     if current_user:
         role = current_user.get('role', '')
-        if role == 'Frontend Developer':
-            bug_query += " AND (u_assignee.role = 'Frontend Developer' OR b.assignee_id = ?)"
-            params.append(current_user['id'])
-        elif role == 'Backend Developer':
-            bug_query += " AND (u_assignee.role = 'Backend Developer' OR b.assignee_id = ?)"
+        if role in ['Frontend Developer', 'Backend Developer']:
+            bug_query += " AND b.assignee_id = ?"
             params.append(current_user['id'])
             
     bug = execute_query(bug_query, tuple(params), fetch_one=True)
@@ -196,6 +190,9 @@ def create_bug(bug_data: Dict[str, Any], reporter_id: int) -> Dict[str, Any]:
         reporter_id
     ]
     
+    if not bug_data.get('module') or str(bug_data.get('module')).strip() == '':
+        bug_data['module'] = 'Other'
+
     for opt in ['module', 'assignee_id']:
         if opt in bug_data:
             columns.append(opt)
@@ -285,28 +282,56 @@ def add_screenshot(bug_internal_id: int, filename: str, url: str):
     q = "INSERT INTO bug_screenshots (bug_id, filename, url) VALUES (%s, %s, %s)" if os.environ.get('DATABASE_URL') else "INSERT INTO bug_screenshots (bug_id, filename, url) VALUES (?, ?, ?)"
     execute_query(q, (bug_internal_id, filename, url), commit=True)
 
-def get_dashboard_summary() -> Dict[str, Any]:
+def get_dashboard_summary(filters: Dict[str, Any] = None, current_user: Dict[str, Any] = None) -> Dict[str, Any]:
     summary = {
-        "total_bugs": execute_query("SELECT COUNT(*) as total FROM bugs", fetch_one=True)['total'],
+        "total_bugs": 0,
         "by_status": {"to_do": 0, "in_progress": 0, "fixed": 0, "retest": 0, "closed": 0, "rejected": 0},
         "by_severity": {"major": 0, "minor": 0, "trivial": 0},
-        "by_priority": {"p1": 0, "p2": 0, "p3": 0, "p4": 0}
+        "by_priority": {"p1": 0, "p2": 0, "p3": 0, "p4": 0},
+        "by_assignee": {}
     }
     
-    status_rows = execute_query("SELECT status, COUNT(*) as count FROM bugs GROUP BY status", fetch_all=True)
+    conditions = ["1=1"]
+    params = []
+    
+    if current_user:
+        role = current_user.get('role', '')
+        if role in ['Frontend Developer', 'Backend Developer']:
+            conditions.append("b.assignee_id = ?")
+            params.append(current_user['id'])
+            
+    if filters:
+        if filters.get('module'):
+            conditions.append("b.module = ?")
+            params.append(filters['module'])
+            
+    where_clause = "WHERE " + " AND ".join(conditions)
+    
+    # Simple queries on bugs table only
+    total_res = execute_query(f"SELECT COUNT(*) as total FROM bugs b {where_clause}", tuple(params), fetch_one=True)
+    summary["total_bugs"] = total_res['total'] if total_res else 0
+    
+    status_rows = execute_query(f"SELECT b.status, COUNT(*) as count FROM bugs b {where_clause} GROUP BY b.status", tuple(params), fetch_all=True)
     for row in status_rows:
         k = row['status'].lower().replace(" ", "_")
         if k in summary["by_status"]: summary["by_status"][k] = row['count']
         
-    severity_rows = execute_query("SELECT severity, COUNT(*) as count FROM bugs GROUP BY severity", fetch_all=True)
+    severity_rows = execute_query(f"SELECT b.severity, COUNT(*) as count FROM bugs b {where_clause} GROUP BY b.severity", tuple(params), fetch_all=True)
     for row in severity_rows:
         k = row['severity'].lower()
         if k in summary["by_severity"]: summary["by_severity"][k] = row['count']
         
-    priority_rows = execute_query("SELECT priority, COUNT(*) as count FROM bugs GROUP BY priority", fetch_all=True)
+    priority_rows = execute_query(f"SELECT b.priority, COUNT(*) as count FROM bugs b {where_clause} GROUP BY b.priority", tuple(params), fetch_all=True)
     for row in priority_rows:
         k = row['priority'].lower()
         if k in summary["by_priority"]: summary["by_priority"][k] = row['count']
+        
+    # Assignee query: LEFT JOIN must come BEFORE WHERE clause
+    assignee_query = f"SELECT u.name, COUNT(b.id) as count FROM bugs b LEFT JOIN users u ON b.assignee_id = u.id {where_clause} GROUP BY u.name"
+    assignee_rows = execute_query(assignee_query, tuple(params), fetch_all=True)
+    for row in assignee_rows:
+        k = row['name'] if row['name'] else "Unassigned"
+        summary["by_assignee"][k] = row['count']
         
     return summary
 

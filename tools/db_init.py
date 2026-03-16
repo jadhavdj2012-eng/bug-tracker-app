@@ -111,8 +111,8 @@ def init_db():
         users_data = [
             ('USR-1001', 'QA Admin', 'qa@example.com', 'QA'),
             ('USR-1002', 'Tech Lead', 'lead@example.com', 'Lead'),
-            ('USR-1003', 'Frontend Dev', 'frontend@example.com', 'Frontend Developer'),
-            ('USR-1004', 'Backend Dev', 'backend@example.com', 'Backend Developer')
+            ('USR-1003', 'Frontend Developer', 'frontend@example.com', 'Frontend Developer'),
+            ('USR-1004', 'Backend Developer', 'backend@example.com', 'Backend Developer')
         ]
         placeholder = "%s" if db_url else "?"
         c.executemany(f"INSERT INTO users (user_id, name, email, role) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})", users_data)
